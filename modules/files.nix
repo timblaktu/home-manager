@@ -278,6 +278,36 @@ in
       '') (lib.filter (v: v.onChange != "") (lib.attrValues cfg))
     );
 
+    # Create Windows-compatible symlinks for files that need them
+    home.activation.createWindowsSymlinks = lib.hm.dag.entryAfter [ "linkGeneration" ] (
+      let
+        # Filter files that need Windows symlinks
+        windowsFiles = lib.filter (v: v.supportReadingFromWindows) (lib.attrValues cfg);
+        
+        # Create the activation script only if we have files that need Windows symlinks
+        windowsSymlinkScript = 
+          if windowsFiles == [] then 
+            "# No files configured for Windows symlink support"
+          else
+            let
+              createScript = ./files/create-windows-symlinks.sh;
+              fileSpecs = lib.concatStringsSep " " (
+                map (v: lib.escapeShellArg "${v.target}:${sourceStorePath v}") windowsFiles
+              );
+            in
+            ''
+              if [[ -v DRY_RUN ]]; then
+                echo "Would create Windows symlinks for files with supportReadingFromWindows enabled"
+              else
+                echo "Creating Windows-compatible symlinks..."
+                newGenFiles="$(readlink -e "$newGenPath/home-files")"
+                bash ${createScript} "$newGenFiles" ${fileSpecs}
+              fi
+            '';
+      in
+      windowsSymlinkScript
+    );
+
     # Symlink directories and files that have the right execute bit.
     # Copy files that need their execute bit changed.
     home-files =

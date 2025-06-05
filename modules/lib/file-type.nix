@@ -138,6 +138,26 @@ in
                 link.
               '';
             };
+
+            supportReadingFromWindows = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Whether to create a Windows-compatible symlink alongside the
+                regular symlink for this file. This is useful in WSL environments
+                where Windows applications need to access files managed by
+                Home Manager.
+
+                When enabled, Home Manager will attempt to create a Windows
+                symlink using PowerShell after the regular symlink is created.
+                This only works in WSL environments and requires appropriate
+                permissions (Developer Mode or Administrator privileges).
+
+                The Windows symlink will be created in the same directory with
+                the same filename, replacing the WSL-created symlink that
+                Windows cannot read.
+              '';
+            };
           };
 
           config = {
