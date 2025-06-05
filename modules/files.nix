@@ -281,27 +281,65 @@ in
     # Create Windows-compatible symlinks for files that need them
     home.activation.createWindowsSymlinks = lib.hm.dag.entryAfter [ "linkGeneration" ] (
       let
-        # Filter files that need Windows symlinks
+        # Get files and directories that need Windows symlinks
         windowsFiles = lib.filter (v: v.supportReadingFromWindows) (lib.attrValues cfg);
         
         # Create the activation script only if we have files that need Windows symlinks
         windowsSymlinkScript = 
           if windowsFiles == [] then 
-            "# No files configured for Windows symlink support"
+            ''echo "DEBUG: No files configured for Windows symlink support"''
           else
             let
               createScript = ./files/create-windows-symlinks.sh;
-              fileSpecs = lib.concatStringsSep " " (
-                map (v: lib.escapeShellArg "${v.target}:${sourceStorePath v}") windowsFiles
-              );
+              
+              # For each windows file/directory, create appropriate specs
+              createFileSpecs = v:
+                if v.recursive then
+                  # For recursive directories, we need to find all files at activation time
+                  ''
+                    # Process recursive directory: ${v.target}
+                    echo "DEBUG: Processing recursive directory: ${v.target}" >&2
+                    if [[ -d "$newGenFiles/${v.target}" ]]; then
+                      echo "DEBUG: Directory exists, finding files in $newGenFiles/${v.target}" >&2
+                      find "$newGenFiles/${v.target}" -type f -printf "${v.target}/%P:%p\n"
+                    else
+                      echo "DEBUG: Directory $newGenFiles/${v.target} does not exist" >&2
+                    fi
+                  ''
+                else
+                  # For individual files, add them directly
+                  ''echo "DEBUG: Adding individual file: ${v.target}:${sourceStorePath v}" >&2 && echo '${v.target}:${sourceStorePath v}''';
+              
+              fileSpecsScript = lib.concatStringsSep "\n" (map createFileSpecs windowsFiles);
             in
             ''
               if [[ -v DRY_RUN ]]; then
                 echo "Would create Windows symlinks for files with supportReadingFromWindows enabled"
               else
                 echo "Creating Windows-compatible symlinks..."
+                echo "DEBUG: Found ${toString (lib.length windowsFiles)} files/directories with supportReadingFromWindows" >&2
                 newGenFiles="$(readlink -e "$newGenPath/home-files")"
-                bash ${createScript} "$newGenFiles" ${fileSpecs}
+                echo "DEBUG: newGenFiles path: $newGenFiles" >&2
+                
+                # Build file specs dynamically
+                fileSpecs=()
+                echo "DEBUG: Building file specifications..." >&2
+                while IFS= read -r line; do
+                  if [[ -n "$line" ]]; then
+                    echo "DEBUG: Adding fileSpec: $line" >&2
+                    fileSpecs+=("$line")
+                  fi
+                done < <(
+                  ${fileSpecsScript}
+                )
+                
+                echo "DEBUG: Total fileSpecs collected: ''${#fileSpecs[@]}" >&2
+                if [[ ''${#fileSpecs[@]} -gt 0 ]]; then
+                  echo "DEBUG: Calling createScript with arguments: $newGenFiles ''${fileSpecs[*]}" >&2
+                  bash ${createScript} "$newGenFiles" "''${fileSpecs[@]}"
+                else
+                  echo "No Windows symlink files found"
+                fi
               fi
             '';
       in

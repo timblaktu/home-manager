@@ -4,17 +4,55 @@
 
 set -euo pipefail
 
+# Debug: Log script invocation
+echo "DEBUG: Script started with $# arguments: $*" >&2
+echo "DEBUG: Working directory: $PWD" >&2
+
 # Check if we're in WSL environment
 if [[ ! -f /proc/version ]] || ! grep -qi "microsoft\|wsl" /proc/version; then
     # Not in WSL, skip Windows symlink creation
+    echo "DEBUG: Not in WSL environment, exiting" >&2
+    exit 0
+fi
+echo "DEBUG: WSL environment confirmed" >&2
+
+# Find PowerShell executable (check PATH first, then fallback to absolute path)
+POWERSHELL=""
+DEBUG_CAPTURE_SCRIPT="/home/tim/claude/capture-activation-env.sh"
+
+# Debug: Log the current environment during activation
+echo "DEBUG: PowerShell detection starting" >&2
+echo "DEBUG: Current PATH: $PATH" >&2
+echo "DEBUG: PWD: $PWD" >&2
+echo "DEBUG: USER: $USER" >&2
+
+if [[ -f "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" ]]; then
+    POWERSHELL="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    echo "DEBUG: Found PowerShell via absolute path: $POWERSHELL" >&2
+elif command -v powershell.exe >/dev/null 2>&1; then
+    POWERSHELL="powershell.exe"
+    echo "DEBUG: Found PowerShell via PATH: $(command -v powershell.exe)" >&2
+else
+    echo "DEBUG: PowerShell not found in PATH" >&2
+    echo "DEBUG: Absolute path check failed for /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" >&2
+    echo "DEBUG: Mount check: $(mount | grep '/mnt/c' | head -1)" >&2
+    echo "DEBUG: Directory test: $(test -d '/mnt/c/Windows' && echo 'EXISTS' || echo 'MISSING')" >&2
+    
+    echo "Warning: powershell.exe not found, cannot create Windows symlinks" >&2
+    echo "  Checked PATH and /mnt/c/Windows/System32/WindowsPowerShell/v1.0/" >&2
+    echo "  You may need to enable Developer Mode in Windows" >&2
+    
+    # Capture activation environment for debugging
+    if [[ -f "$DEBUG_CAPTURE_SCRIPT" ]]; then
+        echo "  Capturing activation environment for debugging..." >&2
+        bash "$DEBUG_CAPTURE_SCRIPT" 2>/dev/null || true
+        echo "  Debug info saved to /home/tim/claude/activation-debug-output.txt" >&2
+    fi
+    
     exit 0
 fi
 
-# Check if we have the required tools
-if ! command -v powershell.exe >/dev/null 2>&1; then
-    echo "Warning: powershell.exe not found, cannot create Windows symlinks" >&2
-    exit 0
-fi
+echo "DEBUG: PowerShell detection successful: $POWERSHELL" >&2
 
 # Function to create Windows symlink
 create_windows_symlink() {
@@ -45,7 +83,7 @@ create_windows_symlink() {
     
     # Create Windows symlink using PowerShell
     # Use -ErrorAction SilentlyContinue to avoid verbose errors
-    if powershell.exe -Command "try { New-Item -ItemType SymbolicLink -Path '$windows_link' -Target '$windows_target' -Force -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" 2>/dev/null; then
+    if "$POWERSHELL" -Command "try { New-Item -ItemType SymbolicLink -Path '$windows_link' -Target '$windows_target' -Force -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" 2>/dev/null; then
         echo "Created Windows symlink: $link_path -> $target_path"
         return 0
     else

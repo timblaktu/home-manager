@@ -156,6 +156,9 @@ in
                 The Windows symlink will be created in the same directory with
                 the same filename, replacing the WSL-created symlink that
                 Windows cannot read.
+
+                For recursive directories, this setting applies to all files
+                within the directory tree when set on the directory entry.
               '';
             };
           };
