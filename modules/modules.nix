@@ -504,6 +504,7 @@ let
       ./systemd.nix
       ./targets/darwin
       ./targets/generic-linux.nix
+      ./targets/wsl
       ./wayland.nix
       ./xresources.nix
       ./xsession.nix
