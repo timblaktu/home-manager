@@ -278,16 +278,16 @@ in
       '') (lib.filter (v: v.onChange != "") (lib.attrValues cfg))
     );
 
-    # Create Windows-compatible symlinks for files that need them
-    home.activation.createWindowsSymlinks = lib.hm.dag.entryAfter [ "linkGeneration" ] (
+    # Create Windows shortcuts for files that need them
+    home.activation.createWindowsShortcuts = lib.hm.dag.entryAfter [ "linkGeneration" ] (
       let
-        # Get files and directories that need Windows symlinks
+        # Get files and directories that need Windows shortcuts
         windowsFiles = lib.filter (v: v.supportReadingFromWindows) (lib.attrValues cfg);
         
-        # Create the activation script only if we have files that need Windows symlinks
-        windowsSymlinkScript = 
+        # Create the activation script only if we have files that need Windows shortcuts
+        windowsShortcutScript = 
           if windowsFiles == [] then 
-            ''echo "DEBUG: No files configured for Windows symlink support"''
+            ''echo "DEBUG: No files configured for Windows shortcut support"''
           else
             let
               createScript = ./files/create-windows-symlinks.sh;
@@ -300,23 +300,23 @@ in
                     # Process recursive directory: ${v.target}
                     echo "DEBUG: Processing recursive directory: ${v.target}" >&2
                     if [[ -d "$newGenFiles/${v.target}" ]]; then
-                      echo "DEBUG: Directory exists, finding files in $newGenFiles/${v.target}" >&2
-                      find "$newGenFiles/${v.target}" -type f -printf "${v.target}/%P:%p\n"
+                      echo "DEBUG: Directory exists, finding files and symlinks in $newGenFiles/${v.target}" >&2
+                      find "$newGenFiles/${v.target}" -type f -o -type l -printf "${v.target}/%P:%p\n"
                     else
                       echo "DEBUG: Directory $newGenFiles/${v.target} does not exist" >&2
                     fi
                   ''
                 else
                   # For individual files, add them directly
-                  ''echo "DEBUG: Adding individual file: ${v.target}:${sourceStorePath v}" >&2 && echo '${v.target}:${sourceStorePath v}''';
+                  ''echo "DEBUG: Adding individual file: ${v.target}:${sourceStorePath v}" >&2 && echo "${v.target}:${sourceStorePath v}"'';
               
               fileSpecsScript = lib.concatStringsSep "\n" (map createFileSpecs windowsFiles);
             in
             ''
               if [[ -v DRY_RUN ]]; then
-                echo "Would create Windows symlinks for files with supportReadingFromWindows enabled"
+                echo "Would create Windows shortcuts for files with supportReadingFromWindows enabled"
               else
-                echo "Creating Windows-compatible symlinks..."
+                echo "Creating Windows shortcuts..."
                 echo "DEBUG: Found ${toString (lib.length windowsFiles)} files/directories with supportReadingFromWindows" >&2
                 newGenFiles="$(readlink -e "$newGenPath/home-files")"
                 echo "DEBUG: newGenFiles path: $newGenFiles" >&2
@@ -338,12 +338,12 @@ in
                   echo "DEBUG: Calling createScript with arguments: $newGenFiles ''${fileSpecs[*]}" >&2
                   bash ${createScript} "$newGenFiles" "''${fileSpecs[@]}"
                 else
-                  echo "No Windows symlink files found"
+                  echo "No Windows shortcut files found"
                 fi
               fi
             '';
       in
-      windowsSymlinkScript
+      windowsShortcutScript
     );
 
     # Symlink directories and files that have the right execute bit.
