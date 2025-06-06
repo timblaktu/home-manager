@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Script to create Windows-compatible symlinks for specified files
+# Script to create Windows shortcuts (.lnk files) for specified files
 # Used by Home Manager activation when supportReadingFromWindows is enabled
+# Optimized for GUI applications like Microsoft Edge, VS Code, etc.
 
 set -euo pipefail
 
@@ -10,98 +11,185 @@ echo "DEBUG: Working directory: $PWD" >&2
 
 # Check if we're in WSL environment
 if [[ ! -f /proc/version ]] || ! grep -qi "microsoft\|wsl" /proc/version; then
-    # Not in WSL, skip Windows symlink creation
     echo "DEBUG: Not in WSL environment, exiting" >&2
     exit 0
 fi
 echo "DEBUG: WSL environment confirmed" >&2
 
-# Find PowerShell executable (check PATH first, then fallback to absolute path)
-POWERSHELL=""
-DEBUG_CAPTURE_SCRIPT="/home/tim/claude/capture-activation-env.sh"
-
-# Debug: Log the current environment during activation
-echo "DEBUG: PowerShell detection starting" >&2
-echo "DEBUG: Current PATH: $PATH" >&2
-echo "DEBUG: PWD: $PWD" >&2
-echo "DEBUG: USER: $USER" >&2
-
-if [[ -f "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" ]]; then
-    POWERSHELL="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-    echo "DEBUG: Found PowerShell via absolute path: $POWERSHELL" >&2
-elif command -v powershell.exe >/dev/null 2>&1; then
-    POWERSHELL="powershell.exe"
-    echo "DEBUG: Found PowerShell via PATH: $(command -v powershell.exe)" >&2
-else
-    echo "DEBUG: PowerShell not found in PATH" >&2
-    echo "DEBUG: Absolute path check failed for /mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" >&2
-    echo "DEBUG: Mount check: $(mount | grep '/mnt/c' | head -1)" >&2
-    echo "DEBUG: Directory test: $(test -d '/mnt/c/Windows' && echo 'EXISTS' || echo 'MISSING')" >&2
+# Function to detect PowerShell availability
+detect_powershell() {
+    local powershell_cmd=""
     
-    echo "Warning: powershell.exe not found, cannot create Windows symlinks" >&2
-    echo "  Checked PATH and /mnt/c/Windows/System32/WindowsPowerShell/v1.0/" >&2
-    echo "  You may need to enable Developer Mode in Windows" >&2
-    
-    # Capture activation environment for debugging
-    if [[ -f "$DEBUG_CAPTURE_SCRIPT" ]]; then
-        echo "  Capturing activation environment for debugging..." >&2
-        bash "$DEBUG_CAPTURE_SCRIPT" 2>/dev/null || true
-        echo "  Debug info saved to /home/tim/claude/activation-debug-output.txt" >&2
+    # Try different PowerShell detection methods
+    if command -v powershell.exe >/dev/null 2>&1; then
+        powershell_cmd="powershell.exe"
+    elif [[ -f "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" ]]; then
+        powershell_cmd="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
+    elif [[ -f "/mnt/c/Windows/System32/powershell.exe" ]]; then
+        powershell_cmd="/mnt/c/Windows/System32/powershell.exe"
     fi
     
-    exit 0
-fi
-
-echo "DEBUG: PowerShell detection successful: $POWERSHELL" >&2
-
-# Function to create Windows symlink
-create_windows_symlink() {
-    local target_path="$1"
-    local link_path="$2"
-    
-    # Convert paths to Windows format
-    local windows_target
-    local windows_link
-    
-    # Use wslpath to convert if available, otherwise manual conversion
-    if command -v wslpath >/dev/null 2>&1; then
-        windows_target=$(wslpath -w "$target_path")
-        windows_link=$(wslpath -w "$link_path")
-    else
-        # Manual conversion for basic cases (fallback)
-        windows_target="\\\\wsl\$\\Ubuntu${target_path}"
-        windows_link="\\\\wsl\$\\Ubuntu${link_path}"
-    fi
-    
-    # Remove existing link if it exists (should be the WSL symlink)
-    if [[ -L "$link_path" ]]; then
-        rm "$link_path"
-    elif [[ -e "$link_path" ]]; then
-        echo "Warning: $link_path exists but is not a symlink, skipping Windows symlink creation" >&2
-        return 1
-    fi
-    
-    # Create Windows symlink using PowerShell
-    # Use -ErrorAction SilentlyContinue to avoid verbose errors
-    if "$POWERSHELL" -Command "try { New-Item -ItemType SymbolicLink -Path '$windows_link' -Target '$windows_target' -Force -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" 2>/dev/null; then
-        echo "Created Windows symlink: $link_path -> $target_path"
+    if [[ -n "$powershell_cmd" ]]; then
+        echo "DEBUG: PowerShell detection successful: $powershell_cmd" >&2
+        echo "$powershell_cmd"
         return 0
     else
-        echo "Warning: Failed to create Windows symlink for $link_path" >&2
-        echo "  You may need to enable Developer Mode or run as Administrator" >&2
-        
-        # Fall back to regular symlink if Windows symlink creation failed
-        ln -sf "$target_path" "$link_path"
+        echo "DEBUG: PowerShell not found" >&2
         return 1
     fi
 }
 
-# Main function that processes a list of files
+# Function to create Windows shortcut (.lnk file)
+create_windows_shortcut() {
+    local actual_target="$1"  # This is the resolved Nix store path
+    local link_path="$2"     # This is the Linux symlink path (for reference)
+    local powershell_cmd="$3"
+    
+    echo "DEBUG: Creating Windows shortcut that bypasses Linux symlink" >&2
+    echo "DEBUG: Resolved target (Nix store): $actual_target" >&2
+    echo "DEBUG: Linux symlink (reference): $link_path" >&2
+    
+    # Create Windows shortcut with .lnk suffix to coexist with Linux symlink
+    local windows_shortcut_path="${link_path}.lnk"
+    echo "DEBUG: Windows shortcut will be: $windows_shortcut_path" >&2
+    
+    # Remove any existing Windows shortcut (but leave Linux symlink alone!)
+    if [[ -e "$windows_shortcut_path" ]]; then
+        echo "DEBUG: Removing existing Windows shortcut: $windows_shortcut_path" >&2
+        rm "$windows_shortcut_path"
+    fi
+    
+    # Create the parent directory if it doesn't exist
+    local parent_dir
+    parent_dir="$(dirname "$windows_shortcut_path")"
+    if [[ ! -d "$parent_dir" ]]; then
+        echo "DEBUG: Creating parent directory: $parent_dir" >&2
+        mkdir -p "$parent_dir"
+    fi
+    
+    # Convert resolved target path (Nix store) to Windows UNC path
+    # This bypasses the Linux symlink and points directly to the file
+    local windows_target_path
+    if command -v wslpath >/dev/null 2>&1; then
+        windows_target_path=$(wslpath -w "$actual_target" 2>/dev/null)
+        if [[ -z "$windows_target_path" ]]; then
+            # Fallback: manually construct UNC path with proper formatting
+            local clean_path="${actual_target#/}"  # Remove leading /
+            clean_path="${clean_path//\/\\\\}"  # Convert / to \\
+            windows_target_path="\\\\wsl.localhost\\NixOS\\$clean_path"
+        fi
+    else
+        # Fallback: manually construct UNC path with proper formatting
+        local clean_path="${actual_target#/}"  # Remove leading /
+        clean_path="${clean_path//\/\\\\}"  # Convert / to \\
+        windows_target_path="\\\\wsl.localhost\\NixOS\\$clean_path"
+    fi
+    
+    # Convert WSL path to Windows path for the shortcut location
+    local windows_shortcut_location
+    if command -v wslpath >/dev/null 2>&1; then
+        windows_shortcut_location=$(wslpath -w "$windows_shortcut_path" 2>/dev/null)
+        if [[ -z "$windows_shortcut_location" ]]; then
+            # Fallback: manually construct UNC path with proper formatting
+            local clean_shortcut_path="${windows_shortcut_path#/}"  # Remove leading /
+            clean_shortcut_path="${clean_shortcut_path//\/\\\\}"  # Convert / to \\
+            windows_shortcut_location="\\\\wsl.localhost\\NixOS\\$clean_shortcut_path"
+        fi
+    else
+        # Fallback: manually construct UNC path with proper formatting
+        local clean_shortcut_path="${windows_shortcut_path#/}"  # Remove leading /
+        clean_shortcut_path="${clean_shortcut_path//\/\\\\}"  # Convert / to \\
+        windows_shortcut_location="\\\\wsl.localhost\\NixOS\\$clean_shortcut_path"
+    fi
+    
+    echo "DEBUG: Creating Windows shortcut via PowerShell" >&2
+    echo "DEBUG: Shortcut location: $windows_shortcut_location" >&2
+    echo "DEBUG: Target path (direct to Nix store): $windows_target_path" >&2
+    echo "DEBUG: Note: Bypassing Linux symlink, pointing directly to Nix store file" >&2
+    
+    # Test if the target is accessible through WSL bridge before creating shortcut
+    echo "DEBUG: Testing WSL bridge access to Nix store target..." >&2
+    if powershell.exe -Command "Test-Path '$windows_target_path'" 2>/dev/null | grep -q "True"; then
+        echo "DEBUG: WSL bridge can access Nix store target file" >&2
+    else
+        echo "DEBUG: WARNING - WSL bridge cannot access Nix store target, shortcut may not work" >&2
+    fi
+    
+    # Additional Edge-specific debugging
+    echo "DEBUG: Testing file type detection..." >&2
+    local file_extension="${windows_target_path##*.}"
+    echo "DEBUG: File extension: $file_extension" >&2
+    
+    # Test if PowerShell can read the file content (Edge compatibility check)
+    echo "DEBUG: Testing PowerShell file content access..." >&2
+    if powershell.exe -Command "Get-Content '$windows_target_path' -TotalCount 1" 2>/dev/null | head -1; then
+        echo "DEBUG: PowerShell can read file content - should work with Edge" >&2
+    else
+        echo "DEBUG: WARNING - PowerShell cannot read file content, Edge may fail" >&2
+    fi
+    
+    # Create PowerShell script to create the shortcut
+    local powershell_script="
+        \$WshShell = New-Object -comObject WScript.Shell;
+        \$Shortcut = \$WshShell.CreateShortcut('$windows_shortcut_location');
+        \$Shortcut.TargetPath = '$windows_target_path';
+        \$Shortcut.Save();
+        Write-Host 'Windows shortcut created successfully';
+    "
+    
+    # Execute PowerShell command to create shortcut (with full error reporting)
+    echo "DEBUG: Executing PowerShell command..." >&2
+    if "$powershell_cmd" -Command "$powershell_script"; then
+        echo "DEBUG: PowerShell command succeeded" >&2
+        
+        # Verify the shortcut was actually created and is valid
+        if [[ -f "$windows_shortcut_path" ]]; then
+            local file_size
+            file_size=$(stat -c%s "$windows_shortcut_path" 2>/dev/null || echo "0")
+            if [[ "$file_size" -gt 100 ]]; then
+                echo "✓ Created Windows shortcut: $windows_shortcut_path -> (direct to Nix store)" 
+                echo "  Linux symlink: $link_path -> $actual_target"
+                echo "  Windows shortcut: $windows_shortcut_location -> $windows_target_path"
+                echo "  (Double-click from Windows Explorer: $windows_shortcut_location)"
+                echo "  (Or use in Windows file dialogs for GUI applications)"
+                echo "  (File size: ${file_size} bytes - indicates valid shortcut)"
+                echo "  (If Edge fails to open: try right-click -> Open with -> Choose another app)"
+                return 0
+            else
+                echo "✗ Windows shortcut file too small (${file_size} bytes) - likely creation failed" >&2
+                return 1
+            fi
+        else
+            echo "✗ Windows shortcut file not found after PowerShell execution" >&2
+            return 1
+        fi
+    else
+        local ps_exit_code=$?
+        echo "✗ Failed to create Windows shortcut: $windows_shortcut_path" >&2
+        echo "  PowerShell command failed with exit code: $ps_exit_code" >&2
+        return 1
+    fi
+}
+
+# Main processing function
 process_files() {
     local home_files_path="$1"
     shift
     
+    # Detect PowerShell availability first
+    local powershell_cmd
+    if ! powershell_cmd=$(detect_powershell); then
+        echo "Error: PowerShell not accessible during activation" >&2
+        echo "Windows shortcuts cannot be created without PowerShell access" >&2
+        return 1
+    fi
+    
+    local success_count=0
     local failed_count=0
+    
+    echo "Creating Windows shortcuts (GUI application optimized)..." >&2
+    echo "DEBUG: Processing ${#@} file specifications" >&2
+    echo "DEBUG: Using PowerShell: $powershell_cmd" >&2
     
     for file_spec in "$@"; do
         # Parse file specification: "target_path:source_path"
@@ -110,50 +198,97 @@ process_files() {
         local full_link_path="$HOME/$target_path"
         local full_source_path="$home_files_path/$target_path"
         
-        # Verify the source exists
+        echo "DEBUG: Processing file spec: $file_spec" >&2
+        echo "DEBUG:   target_path: $target_path" >&2
+        echo "DEBUG:   source_path: $source_path" >&2
+        echo "DEBUG:   full_link_path: $full_link_path" >&2
+        echo "DEBUG:   full_source_path: $full_source_path" >&2
+        
+        # Verify the source exists in home-files
         if [[ ! -e "$full_source_path" ]]; then
             echo "Warning: Source file $full_source_path does not exist, skipping" >&2
             ((failed_count++))
             continue
         fi
         
-        # Get the actual target that the home-files symlink points to
+        # Resolve the actual target that the home-files symlink points to
+        local actual_target
         if [[ -L "$full_source_path" ]]; then
             actual_target=$(readlink "$full_source_path")
-            # If relative, make it absolute
+            # Convert relative paths to absolute
             if [[ "$actual_target" != /* ]]; then
                 actual_target="$(dirname "$full_source_path")/$actual_target"
             fi
+            # Canonicalize the path
             actual_target=$(realpath "$actual_target")
+            echo "DEBUG: Resolved symlink target: $actual_target" >&2
         else
             actual_target="$full_source_path"
+            echo "DEBUG: Using direct file path: $actual_target" >&2
         fi
         
-        echo "Processing Windows symlink for: $target_path"
-        echo "  Link: $full_link_path"
-        echo "  Target: $actual_target"
+        # Verify the final target exists and is accessible
+        if [[ ! -e "$actual_target" ]]; then
+            echo "Warning: Final target $actual_target does not exist, skipping" >&2
+            ((failed_count++))
+            continue
+        fi
         
-        if create_windows_symlink "$actual_target" "$full_link_path"; then
-            echo "  ✓ Success"
+        echo "Processing Windows shortcut for: $target_path"
+        echo "  Linux symlink (unchanged): $full_link_path -> $actual_target"  
+        echo "  Windows shortcut (creating): ${full_link_path}.lnk -> (direct to Nix store)"
+        echo "  Final target: $actual_target"
+        
+        if create_windows_shortcut "$actual_target" "$full_link_path" "$powershell_cmd"; then
+            ((success_count++))
         else
-            echo "  ✗ Failed"
             ((failed_count++))
         fi
         echo
     done
     
+    # Summary report
+    echo "Windows shortcut creation summary:" >&2
+    echo "  ✓ Successful: $success_count" >&2
+    echo "  ✗ Failed: $failed_count" >&2
+    
     if [[ $failed_count -gt 0 ]]; then
-        echo "Warning: $failed_count Windows symlink(s) failed to create" >&2
-        echo "Consider enabling Developer Mode or running with Administrator privileges" >&2
+        echo "Note: Some Windows shortcuts could not be created - check PowerShell access" >&2
+        echo "Linux symlinks remain unchanged and functional for WSL access" >&2
+        echo "DEBUG: Exiting with code 1 due to $failed_count failures" >&2
+        return 1
     else
-        echo "All Windows symlinks created successfully!"
+        echo "All Windows shortcuts created successfully alongside existing Linux symlinks!" >&2
+        echo "Double-click shortcuts from Windows Explorer or use in GUI file dialogs" >&2
+        echo "DEBUG: Exiting with code 0 - all successful" >&2
+        return 0
     fi
 }
 
 # Script entry point
 if [[ $# -lt 1 ]]; then
     echo "Usage: $0 <home-files-path> [file1:source1] [file2:source2] ..." >&2
+    echo >&2
+    echo "This script creates Windows shortcuts (.lnk files) for Home Manager files" >&2
+    echo "that have supportReadingFromWindows enabled." >&2
+    echo "Shortcuts work optimally with GUI applications and file dialogs." >&2
+    echo >&2
+    echo "Arguments:" >&2
+    echo "  home-files-path  Path to the home-manager-files store directory" >&2
+    echo "  file*:source*    File specifications in format 'target:source'" >&2
     exit 1
 fi
 
-process_files "$@"
+home_files_path="$1"
+shift
+
+# Validate home-files path
+if [[ ! -d "$home_files_path" ]]; then
+    echo "Error: Home files path does not exist: $home_files_path" >&2
+    exit 1
+fi
+
+echo "DEBUG: Home files path: $home_files_path" >&2
+echo "DEBUG: Will process ${#@} file specifications" >&2
+
+process_files "$home_files_path" "$@"
