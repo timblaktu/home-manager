@@ -68,14 +68,25 @@ in
   config = mkIf cfg.enable {
     home.extraActivationPath = 
       let
-        wrapperFor = tool: path: pkgs.writeShellScriptBin "wsl-${tool}-wrapper" ''
-          exec "${path}" "$@"
-        '';
+        # Create wrapper with the natural tool name and optional extension-less alias
+        # This provides both powershell.exe/powershell, cmd.exe/cmd for better UX
+        wrapperFor = toolName: path: extensionlessAlias: 
+          let
+            mainWrapper = pkgs.writeShellScriptBin toolName ''
+              exec "${path}" "$@"
+            '';
+            aliasWrapper = if extensionlessAlias != null then
+              pkgs.writeShellScriptBin extensionlessAlias ''
+                exec "${path}" "$@"
+              ''
+            else null;
+          in
+          [ mainWrapper ] ++ (if aliasWrapper != null then [ aliasWrapper ] else []);
 
-        toolWrappers = [ ]
-          ++ optional cfg.windowsTools.enablePowerShell (wrapperFor "powershell" cfg.windowsTools.powerShellPath)
-          ++ optional cfg.windowsTools.enableCmd (wrapperFor "cmd" cfg.windowsTools.cmdPath)
-          ++ optional cfg.windowsTools.enableWslPath (wrapperFor "wslpath" cfg.windowsTools.wslPathPath);
+        toolWrappers = lib.flatten ([ ]
+          ++ optional cfg.windowsTools.enablePowerShell (wrapperFor "powershell.exe" cfg.windowsTools.powerShellPath "powershell")
+          ++ optional cfg.windowsTools.enableCmd (wrapperFor "cmd.exe" cfg.windowsTools.cmdPath "cmd")
+          ++ optional cfg.windowsTools.enableWslPath (wrapperFor "wslpath" cfg.windowsTools.wslPathPath null));
 
       in
       toolWrappers;

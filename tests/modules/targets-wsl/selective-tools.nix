@@ -12,15 +12,17 @@
     };
 
     nmt.script = ''
-      # Check that only cmd wrapper is added to extraActivationPath
+      # Check that only cmd (with alias) is added to extraActivationPath
       assertFileRegex activate \
-        "export PATH=.*wsl-cmd-wrapper.*"
+        "export PATH=.*cmd.exe.*cmd.*"
         
-      # Check that PowerShell and wslpath wrappers are NOT added
+      # Check that PowerShell and wslpath are NOT added
       assertFileNotRegex activate \
-        "wsl-powershell-wrapper"
+        "powershell.exe"
       assertFileNotRegex activate \
-        "wsl-wslpath-wrapper"
+        "[^.]powershell[^.]"
+      assertFileNotRegex activate \
+        "wslpath"
         
       # Check that only cmd availability check is present
       assertFileRegex activate \

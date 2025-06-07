@@ -12,8 +12,8 @@ The WSL targets module provides WSL-specific features for Home Manager, followin
 
 ```
 modules/targets/wsl/
-├── default.nix              # Main module entry point
-└── windows-tools.nix        # Windows tools integration
+├── default.nix              # Main module implementation
+└── tests.nix                # Test imports
 ```
 
 ### Core Problem Solved
