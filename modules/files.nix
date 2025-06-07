@@ -71,6 +71,29 @@ in
                 }'';
         }
       )
+      # Helpful guidance for Windows shortcuts feature
+      (
+        let
+          windowsFiles = lib.filter (v: v.supportReadingFromWindows) (lib.attrValues cfg);
+          hasWindowsFiles = windowsFiles != [];
+          wslEnabled = config.targets.wsl.enable;
+          powerShellEnabled = config.targets.wsl.windowsTools.enablePowerShell;
+        in
+        {
+          assertion = !hasWindowsFiles || (wslEnabled && powerShellEnabled);
+          message = ''
+            Files configured with supportReadingFromWindows require WSL targets module.
+            
+            Please add to your configuration:
+            
+                targets.wsl = {
+                  enable = true;
+                  windowsTools.enablePowerShell = true;
+                }
+            
+            This enables PowerShell access during activation for Windows shortcut creation.'';
+        }
+      )
     ];
 
     #  Using this function it is possible to make `home.file` create a
@@ -279,15 +302,24 @@ in
     );
 
     # Create Windows shortcuts for files that need them
+    # Only runs when WSL targets module provides PowerShell in activation environment
     home.activation.createWindowsShortcuts = lib.hm.dag.entryAfter [ "linkGeneration" ] (
       let
         # Get files and directories that need Windows shortcuts
         windowsFiles = lib.filter (v: v.supportReadingFromWindows) (lib.attrValues cfg);
         
+        # Check if WSL targets module is configured to provide PowerShell
+        wslPowerShellEnabled = config.targets.wsl.enable && config.targets.wsl.windowsTools.enablePowerShell;
+        
         # Create the activation script only if we have files that need Windows shortcuts
         windowsShortcutScript = 
           if windowsFiles == [] then 
             ''echo "DEBUG: No files configured for Windows shortcut support"''
+          else if !wslPowerShellEnabled then
+            ''
+              echo "INFO: Files configured for Windows shortcuts, but targets.wsl.windowsTools.enablePowerShell is not enabled"
+              echo "INFO: Skipping Windows shortcut creation - enable targets.wsl.windowsTools.enablePowerShell to use this feature"
+            ''
           else
             let
               createScript = ./files/create-windows-symlinks.sh;
@@ -316,10 +348,17 @@ in
               if [[ -v DRY_RUN ]]; then
                 echo "Would create Windows shortcuts for files with supportReadingFromWindows enabled"
               else
-                echo "Creating Windows shortcuts..."
+                echo "Creating Windows shortcuts using WSL targets module PowerShell..."
                 echo "DEBUG: Found ${toString (lib.length windowsFiles)} files/directories with supportReadingFromWindows" >&2
                 newGenFiles="$(readlink -e "$newGenPath/home-files")"
                 echo "DEBUG: newGenFiles path: $newGenFiles" >&2
+                
+                # Verify PowerShell is available in activation environment (provided by WSL targets module)
+                if ! command -v powershell.exe >/dev/null 2>&1; then
+                  echo "ERROR: PowerShell not found in activation environment despite WSL targets configuration"
+                  echo "ERROR: This indicates a problem with the WSL targets module integration"
+                  exit 1
+                fi
                 
                 # Build file specs dynamically
                 fileSpecs=()
