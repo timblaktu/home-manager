@@ -518,7 +518,6 @@ import nmtSrc {
       ./modules/services/xsettingsd
       ./modules/services/yubikey-agent
       ./modules/systemd
-      ./modules/targets-linux
       ./modules/targets-wsl
       # keep-sorted end
     ]
