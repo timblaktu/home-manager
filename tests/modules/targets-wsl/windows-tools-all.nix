@@ -15,9 +15,9 @@
     };
 
     nmt.script = ''
-      # Check that all tool wrappers are added to extraActivationPath
+      # Check that all tools (with extension-less aliases) are added to extraActivationPath
       assertFileRegex activate \
-        "export PATH=.*wsl-powershell-wrapper.*wsl-cmd-wrapper.*wsl-wslpath-wrapper.*"
+        "export PATH=.*powershell.exe.*powershell.*cmd.exe.*cmd.*wslpath.*"
         
       # Check individual tool availability checks in activation script
       assertFileRegex activate \
@@ -27,7 +27,7 @@
       assertFileRegex activate \
         "WSL: wslpath available in activation environment"
         
-      # Verify custom paths are used in wrappers
+      # Verify custom paths are used in tool executables
       assertFileRegex activate \
         "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
       assertFileRegex activate \

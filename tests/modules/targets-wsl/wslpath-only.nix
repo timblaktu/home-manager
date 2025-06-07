@@ -13,15 +13,15 @@
     };
 
     nmt.script = ''
-      # Check that only wslpath wrapper is added to extraActivationPath
+      # Check that only wslpath is added to extraActivationPath
       assertFileRegex activate \
-        "export PATH=.*wsl-wslpath-wrapper.*"
+        "export PATH=.*wslpath.*"
         
-      # Check that PowerShell and cmd wrappers are NOT added
+      # Check that PowerShell and cmd are NOT added
       assertFileNotRegex activate \
-        "wsl-powershell-wrapper"
+        "powershell.exe"
       assertFileNotRegex activate \
-        "wsl-cmd-wrapper"
+        "cmd.exe"
         
       # Check that custom wslpath path is used
       assertFileRegex activate \

@@ -5,13 +5,17 @@
     targets.wsl.enable = false;
 
     nmt.script = ''
-      # Check that no WSL tool wrappers are added when disabled
+      # Check that no WSL tools (including extension-less aliases) are added when disabled
       assertFileNotRegex activate \
-        "wsl-powershell-wrapper"
+        "powershell.exe"
       assertFileNotRegex activate \
-        "wsl-cmd-wrapper"  
+        "[^.]powershell[^.]"
       assertFileNotRegex activate \
-        "wsl-wslpath-wrapper"
+        "cmd.exe"  
+      assertFileNotRegex activate \
+        "[^.]cmd[^.]"
+      assertFileNotRegex activate \
+        "wslpath"
         
       # Check that no WSL tool availability checks are present
       assertFileNotRegex activate \
