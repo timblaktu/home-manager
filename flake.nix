@@ -62,6 +62,14 @@
           }
         );
 
+        checks = forAllPkgs (
+          pkgs:
+          let
+            tests = import ./tests { inherit pkgs; };
+          in
+          tests.build or tests
+        );
+
         packages = forAllPkgs (
           pkgs:
           let
