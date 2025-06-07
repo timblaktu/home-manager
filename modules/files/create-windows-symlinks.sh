@@ -16,25 +16,16 @@ if [[ ! -f /proc/version ]] || ! grep -qi "microsoft\|wsl" /proc/version; then
 fi
 echo "DEBUG: WSL environment confirmed" >&2
 
-# Function to detect PowerShell availability
-detect_powershell() {
-    local powershell_cmd=""
-    
-    # Try different PowerShell detection methods
+# Function to verify PowerShell availability from activation environment
+# PowerShell should be provided by WSL targets module in activation PATH
+verify_powershell() {
     if command -v powershell.exe >/dev/null 2>&1; then
-        powershell_cmd="powershell.exe"
-    elif [[ -f "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" ]]; then
-        powershell_cmd="/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-    elif [[ -f "/mnt/c/Windows/System32/powershell.exe" ]]; then
-        powershell_cmd="/mnt/c/Windows/System32/powershell.exe"
-    fi
-    
-    if [[ -n "$powershell_cmd" ]]; then
-        echo "DEBUG: PowerShell detection successful: $powershell_cmd" >&2
-        echo "$powershell_cmd"
+        echo "DEBUG: PowerShell available from activation environment (WSL targets module)" >&2
+        echo "powershell.exe"
         return 0
     else
-        echo "DEBUG: PowerShell not found" >&2
+        echo "ERROR: PowerShell not available in activation environment" >&2
+        echo "ERROR: This should be provided by targets.wsl.windowsTools.enablePowerShell" >&2
         return 1
     fi
 }
@@ -176,12 +167,14 @@ process_files() {
     local home_files_path="$1"
     shift
     
-    # Detect PowerShell availability first
+    # Verify PowerShell availability from WSL targets module
     local powershell_cmd
-    if ! powershell_cmd=$(detect_powershell); then
+    if ! powershell_cmd=$(verify_powershell); then
         echo "Error: PowerShell not accessible during activation" >&2
         echo "Windows shortcuts cannot be created without PowerShell access" >&2
-        return 1
+        echo "Ensure targets.wsl.windowsTools.enablePowerShell is enabled" >&2
+        echo "This is non-fatal for home-manager activation - continuing..." >&2
+        return 0  # Return success despite the error - don't fail activation
     fi
     
     local success_count=0
@@ -255,8 +248,8 @@ process_files() {
     if [[ $failed_count -gt 0 ]]; then
         echo "Note: Some Windows shortcuts could not be created - check PowerShell access" >&2
         echo "Linux symlinks remain unchanged and functional for WSL access" >&2
-        echo "DEBUG: Exiting with code 1 due to $failed_count failures" >&2
-        return 1
+        echo "DEBUG: Continuing despite $failed_count failures - non-fatal for activation" >&2
+        return 0  # Return success despite failures - don't fail home-manager activation
     else
         echo "All Windows shortcuts created successfully alongside existing Linux symlinks!" >&2
         echo "Double-click shortcuts from Windows Explorer or use in GUI file dialogs" >&2
@@ -276,7 +269,7 @@ if [[ $# -lt 1 ]]; then
     echo "Arguments:" >&2
     echo "  home-files-path  Path to the home-manager-files store directory" >&2
     echo "  file*:source*    File specifications in format 'target:source'" >&2
-    exit 1
+    exit 0  # Exit successfully even when showing help - don't fail home-manager activation
 fi
 
 home_files_path="$1"
@@ -285,10 +278,12 @@ shift
 # Validate home-files path
 if [[ ! -d "$home_files_path" ]]; then
     echo "Error: Home files path does not exist: $home_files_path" >&2
-    exit 1
+    exit 0  # Exit successfully despite the error - don't fail home-manager activation
 fi
 
 echo "DEBUG: Home files path: $home_files_path" >&2
 echo "DEBUG: Will process ${#@} file specifications" >&2
 
+# Process files but don't propagate error code to home-manager
 process_files "$home_files_path" "$@"
+exit 0  # Always exit with success code for home-manager activation
