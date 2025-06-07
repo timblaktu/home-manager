@@ -12,9 +12,9 @@
     };
 
     nmt.script = ''
-      # Integration test: verify all tools work together
+      # Integration test: verify all tools (with aliases) work together
       assertFileRegex activate \
-        "wsl-powershell-wrapper.*wsl-cmd-wrapper.*wsl-wslpath-wrapper"
+        "powershell.exe.*powershell.*cmd.exe.*cmd.*wslpath"
 
       assertFileRegex activate \
         "WSL: PowerShell available in activation environment"
