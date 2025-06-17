@@ -1,1 +1,25 @@
-{ config, lib, pkgs, ... }:\n\nwith lib;\n\n{\n  config = {\n    targets.wsl = {\n      enable = true;\n      windowsUsername = \"explicit-user\";\n      windowsTools.enablePowerShell = true;\n    };\n\n    test.stubs.wsl = { };\n\n    nmt.script = ''\n      assertFileRegex home-files/test-explicit-config.txt \"windowsUsernameFinal: explicit-user\"\n      assertFileRegex home-files/test-explicit-config.txt \"windowsHomeDir: /mnt/c/Users/explicit-user\"\n    '';\n\n    home.file.\"test-explicit-config.txt\".text = ''\n      windowsUsernameFinal: ${config.targets.wsl.windowsUsernameFinal}\n      windowsHomeDir: ${config.targets.wsl.windowsHomeDir}\n    '';\n  };\n}\n
+{ config, lib, pkgs, ... }:
+
+with lib;
+
+{
+  config = {
+    targets.wsl = {
+      enable = true;
+      windowsUsername = "explicit-user";
+      windowsTools.enablePowerShell = true;
+    };
+
+    test.stubs.wsl = { };
+
+    nmt.script = ''
+      assertFileRegex home-files/test-explicit-config.txt "windowsUsernameFinal: explicit-user"
+      assertFileRegex home-files/test-explicit-config.txt "windowsHomeDir: /mnt/c/Users/explicit-user"
+    '';
+
+    home.file."test-explicit-config.txt".text = ''
+      windowsUsernameFinal: ${config.targets.wsl.windowsUsernameFinal}
+      windowsHomeDir: ${config.targets.wsl.windowsHomeDir}
+    '';
+  };
+}
