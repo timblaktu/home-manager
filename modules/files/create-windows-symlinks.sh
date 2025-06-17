@@ -234,13 +234,14 @@ process_files() {
         
         if create_windows_shortcut "$actual_target" "$full_link_path" "$powershell_cmd"; then
             ((success_count++))
+            echo success
         else
             ((failed_count++))
+            echo fail
         fi
-        echo
+        printf "\nsuccess_count=$success_count failed_count=$failed_count\n\n"
     done
     
-    # Summary report
     echo "Windows shortcut creation summary:" >&2
     echo "  ✓ Successful: $success_count" >&2
     echo "  ✗ Failed: $failed_count" >&2

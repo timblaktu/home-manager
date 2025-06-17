@@ -6,4 +6,5 @@
   targets-wsl-integration = ./integration.nix;
   targets-wsl-windows-tools-all = ./windows-tools-all.nix;
   targets-wsl-wslpath-only = ./wslpath-only.nix;
+  targets-wsl-explicit-username = ./explicit-username.nix;
 }
