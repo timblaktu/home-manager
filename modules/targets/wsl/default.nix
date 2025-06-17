@@ -94,6 +94,10 @@ EOF
 in
 
 {
+  imports = [
+    ./bind-mount-root.nix
+  ];
+
   meta.maintainers = with maintainers; [ ];
 
   options.targets.wsl = {
