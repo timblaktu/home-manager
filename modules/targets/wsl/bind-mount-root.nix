@@ -1,14 +1,13 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, wslHostname ? "unknown", ... }:
 
 with lib;
 
 let
   cfg = config.targets.wsl.bindMountRoot;
   
-  # Get hostname for mountpoint
-  hostname = builtins.readFile "/proc/sys/kernel/hostname";
+  # Use hostname from specialArgs for mountpoint
   actualMountpoint = if cfg.mountpoint == "/mnt/wsl/\${HOSTNAME}" 
-    then "/mnt/wsl/${lib.strings.removeSuffix "\n" hostname}"
+    then "/mnt/wsl/${wslHostname}"
     else cfg.mountpoint;
   
   # Boot command using actual mountpoint
