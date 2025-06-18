@@ -5,22 +5,29 @@ with lib;
 let
   cfg = config.targets.wsl.bindMountRoot;
   
-  # For non-NixOS systems, we need to:
-  # 1. Configure wsl.conf with boot command
-  # 2. Execute immediate mount command
-  wslConfBootCommand = "mount --bind / ${cfg.mountpoint}/ -o x-mount.mkdir";
+  # Get hostname for mountpoint
+  hostname = builtins.readFile "/proc/sys/kernel/hostname";
+  actualMountpoint = if cfg.mountpoint == "/mnt/wsl/\${HOSTNAME}" 
+    then "/mnt/wsl/${lib.strings.removeSuffix "\n" hostname}"
+    else cfg.mountpoint;
+  
+  # Boot command using actual mountpoint
+  wslConfBootCommand = "mount --bind / ${actualMountpoint}/ -o x-mount.mkdir";
   
   # Script to configure /etc/wsl.conf
   configureWslConf = pkgs.writeShellScript "configure-wsl-conf" ''
     set -euo pipefail
     
     WSL_CONF="/etc/wsl.conf"
+    BACKUP_CONF="$WSL_CONF.backup-$(date +%Y%m%d-%H%M%S)"
     TEMP_CONF=$(mktemp)
     
     echo "Configuring WSL bind mount in $WSL_CONF..."
     
-    # Read existing wsl.conf or create basic structure
+    # Create backup if file exists
     if [[ -f "$WSL_CONF" ]]; then
+      sudo cp "$WSL_CONF" "$BACKUP_CONF"
+      echo "Backed up existing config to $BACKUP_CONF"
       cp "$WSL_CONF" "$TEMP_CONF"
     else
       cat > "$TEMP_CONF" << 'EOF'
@@ -35,18 +42,17 @@ enabled = true
 EOF
     fi
     
-    # Check if [boot] section exists and has our command
+    # Check if [boot] section exists
     if grep -q "^\[boot\]" "$TEMP_CONF"; then
-      # [boot] section exists, check for our command
-      if ! grep -q "command.*mount --bind / ${cfg.mountpoint}" "$TEMP_CONF"; then
-        # Add or update the command
+      # Check if our command already exists
+      if ! grep -q "mount --bind / ${actualMountpoint}" "$TEMP_CONF"; then
+        # Check if existing command exists
         if grep -q "^command" "$TEMP_CONF"; then
-          # Replace existing command
-          sed -i "/^\[boot\]/,/^\[/{s/^command.*/command = \"${wslConfBootCommand}\"/}" "$TEMP_CONF"
-        else
-          # Add command after [boot] line
-          sed -i "/^\[boot\]/a command = \"${wslConfBootCommand}\"" "$TEMP_CONF"
+          # Preserve existing command by commenting it out
+          sed -i "/^\[boot\]/,/^\[/{s|^command|# Previous command|g}" "$TEMP_CONF"
         fi
+        # Add our command after [boot] line
+        sed -i "/^\[boot\]/a command = \"${wslConfBootCommand}\"" "$TEMP_CONF"
       fi
     else
       # No [boot] section, add it
@@ -69,19 +75,19 @@ EOF
   executeImmediateMount = pkgs.writeShellScript "execute-immediate-mount" ''
     set -euo pipefail
     
-    echo "Setting up immediate bind mount: / -> ${cfg.mountpoint}"
+    echo "Setting up immediate bind mount: / -> ${actualMountpoint}"
     
     # Check if already mounted
-    if mountpoint -q "${cfg.mountpoint}" 2>/dev/null; then
-      echo "Mount point ${cfg.mountpoint} already mounted, skipping"
+    if mountpoint -q "${actualMountpoint}" 2>/dev/null; then
+      echo "Mount point ${actualMountpoint} already mounted, skipping"
       exit 0
     fi
     
     # Create mount point if it doesn't exist and execute mount
-    sudo mkdir -p "${cfg.mountpoint}"
-    sudo mount --bind / "${cfg.mountpoint}/" -o x-mount.mkdir
+    sudo mkdir -p "${actualMountpoint}"
+    sudo mount --bind / "${actualMountpoint}/" -o x-mount.mkdir
     
-    echo "Bind mount created successfully: ${cfg.mountpoint}"
+    echo "Bind mount created successfully: ${actualMountpoint}"
   '';
 
 in
@@ -92,7 +98,7 @@ in
     
     mountpoint = mkOption {
       type = types.str;
-      default = "/mnt/wsl/\${WSL_DISTRO_NAME}";
+      default = "/mnt/wsl/\${HOSTNAME}";
       description = ''
         Mount point for the root filesystem bind mount.
         
@@ -112,7 +118,7 @@ in
     warnings = [
       ''
         targets.wsl.bindMountRoot: Configuring WSL cross-instance mount for non-NixOS system
-        Mount point: ${cfg.mountpoint}
+        Mount point: ${actualMountpoint}
         Boot command: ${wslConfBootCommand}
         
         Note: You may need to restart your WSL instance for the boot command to take effect.
@@ -122,7 +128,7 @@ in
     
     home.activation.wslBindMountRoot = lib.hm.dag.entryAfter ["writeBoundary"] ''
       echo "Configuring WSL bind mount for non-NixOS system..."
-      echo "Target mount point: ${cfg.mountpoint}"
+      echo "Target mount point: ${actualMountpoint}"
       
       # Configure wsl.conf
       if [[ -x "${configureWslConf}" ]]; then
