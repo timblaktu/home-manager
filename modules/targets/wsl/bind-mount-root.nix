@@ -21,11 +21,23 @@ let
     BACKUP_CONF="$WSL_CONF.backup-$(date +%Y%m%d-%H%M%S)"
     TEMP_CONF=$(mktemp)
     
-    echo "Configuring WSL bind mount in $WSL_CONF..."
+    # Check for privilege escalation tools
+    PRIV_CMD=""
+    if command -v sudo >/dev/null 2>&1; then
+      PRIV_CMD="sudo"
+    elif command -v doas >/dev/null 2>&1; then
+      PRIV_CMD="doas"
+    else
+      echo "Error: No privilege escalation tool found (sudo/doas)"
+      echo "WSL configuration requires root access to modify /etc/wsl.conf"
+      exit 1
+    fi
+    
+    echo "Configuring WSL bind mount in $WSL_CONF using $PRIV_CMD..."
     
     # Create backup if file exists
     if [[ -f "$WSL_CONF" ]]; then
-      sudo cp "$WSL_CONF" "$BACKUP_CONF"
+      $PRIV_CMD cp "$WSL_CONF" "$BACKUP_CONF"
       echo "Backed up existing config to $BACKUP_CONF"
       cp "$WSL_CONF" "$TEMP_CONF"
     else
@@ -64,7 +76,7 @@ EOF
     fi
     
     # Apply the configuration atomically
-    sudo cp "$TEMP_CONF" "$WSL_CONF"
+    $PRIV_CMD cp "$TEMP_CONF" "$WSL_CONF"
     rm "$TEMP_CONF"
     
     echo "WSL configuration updated. Boot command: ${wslConfBootCommand}"
@@ -82,9 +94,21 @@ EOF
       exit 0
     fi
     
+    # Check for privilege escalation tools
+    PRIV_CMD=""
+    if command -v sudo >/dev/null 2>&1; then
+      PRIV_CMD="sudo"
+    elif command -v doas >/dev/null 2>&1; then
+      PRIV_CMD="doas"
+    else
+      echo "Error: No privilege escalation tool found (sudo/doas)"
+      echo "Mount operation requires root access"
+      exit 1
+    fi
+    
     # Create mount point if it doesn't exist and execute mount
-    sudo mkdir -p "${actualMountpoint}"
-    sudo mount --bind / "${actualMountpoint}/" -o x-mount.mkdir
+    $PRIV_CMD mkdir -p "${actualMountpoint}"
+    $PRIV_CMD mount --bind / "${actualMountpoint}/" -o x-mount.mkdir
     
     echo "Bind mount created successfully: ${actualMountpoint}"
   '';
