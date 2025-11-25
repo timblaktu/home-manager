@@ -274,8 +274,9 @@ in
                 }
 
                 # Set font in profiles.defaults
-                $fontConfig = ${fontJson}
-                if ($fontConfig -ne $null) {
+                $fontConfigJson = '${fontJson}'
+                if ($fontConfigJson -ne "null") {
+                    $fontConfig = $fontConfigJson | ConvertFrom-Json
                     if (-not $settings.profiles.defaults) {
                         $settings.profiles | Add-Member -Name "defaults" -Value @{} -MemberType NoteProperty -Force
                     }
