@@ -280,12 +280,8 @@ in
                     if (-not $settings.profiles.defaults) {
                         $settings.profiles | Add-Member -Name "defaults" -Value @{} -MemberType NoteProperty -Force
                     }
-                    if (-not $settings.profiles.defaults.font) {
-                        $settings.profiles.defaults | Add-Member -Name "font" -Value @{} -MemberType NoteProperty -Force
-                    }
-                    foreach ($prop in $fontConfig.PSObject.Properties) {
-                        $settings.profiles.defaults.font | Add-Member -Name $prop.Name -Value $prop.Value -MemberType NoteProperty -Force
-                    }
+                    # Replace the entire font object instead of trying to merge properties
+                    $settings.profiles.defaults | Add-Member -Name "font" -Value $fontConfig -MemberType NoteProperty -Force
                     Write-Host "  Updated font configuration" -ForegroundColor Gray
                 }
 
