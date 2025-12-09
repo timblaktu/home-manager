@@ -1,8 +1,7 @@
-{
-  config,
-  pkgs,
-  lib,
-  ...
+{ config
+, pkgs
+, lib
+, ...
 }:
 let
   im = config.i18n.inputMethod;
@@ -183,17 +182,21 @@ in
         lib.optionals (cfg.quickPhrase != { }) [
           (pkgs.writeTextDir "share/fcitx5/data/QuickPhrase.mb" (
             lib.concatStringsSep "\n" (
-              lib.mapAttrsToList (
-                name: value: "${name} ${builtins.replaceStrings [ "\\" "\n" ] [ "\\\\" "\\n" ] value}"
-              ) cfg.quickPhrase
+              lib.mapAttrsToList
+                (
+                  name: value: "${name} ${builtins.replaceStrings [ "\\" "\n" ] [ "\\\\" "\\n" ] value}"
+                )
+                cfg.quickPhrase
             )
           ))
         ]
         ++ lib.optionals (cfg.quickPhraseFiles != { }) [
           (pkgs.linkFarm "quickPhraseFiles" (
-            lib.mapAttrs' (
-              name: value: lib.nameValuePair ("share/fcitx5/data/quickphrase.d/${name}.mb") value
-            ) cfg.quickPhraseFiles
+            lib.mapAttrs'
+              (
+                name: value: lib.nameValuePair ("share/fcitx5/data/quickphrase.d/${name}.mb") value
+              )
+              cfg.quickPhraseFiles
           ))
         ];
     };
@@ -234,34 +237,38 @@ in
           entries = lib.attrsets.mergeAttrsList [
             (optionalFile "config" iniFormat.generate cfg.settings.globalOptions)
             (optionalFile "profile" iniFormat.generate cfg.settings.inputMethod)
-            (lib.concatMapAttrs (
-              name: value: optionalFile "conf/${name}.conf" iniGlobalFormat.generate value
-            ) cfg.settings.addons)
+            (lib.concatMapAttrs
+              (
+                name: value: optionalFile "conf/${name}.conf" iniGlobalFormat.generate value
+              )
+              cfg.settings.addons)
           ];
         in
         lib.mkIf (entries != { }) { source = pkgs.linkFarm "fcitx-config" entries; };
 
-      dataFile = lib.concatMapAttrs (
-        name: attrs:
-        let
-          nullableFile =
-            n: maybeNull: source:
-            lib.nameValuePair "fcitx5/themes/${name}/${n}" (lib.mkIf (maybeNull != null) { inherit source; });
-          simpleFile = n: v: nullableFile n v v;
-        in
-        builtins.listToAttrs [
-          (simpleFile "highlight.svg" attrs.highlightImage)
-          (simpleFile "panel.svg" attrs.panelImage)
-          (nullableFile "theme.conf" attrs.theme (
-            if builtins.isPath attrs.theme || lib.isStorePath attrs.theme then
-              attrs.theme
-            else if builtins.isString attrs.theme then
-              pkgs.writeText "fcitx5-theme.conf" attrs.theme
-            else
-              iniFormat.generate "fcitx5-${name}-theme" attrs.theme
-          ))
-        ]
-      ) cfg.themes;
+      dataFile = lib.concatMapAttrs
+        (
+          name: attrs:
+            let
+              nullableFile =
+                n: maybeNull: source:
+                lib.nameValuePair "fcitx5/themes/${name}/${n}" (lib.mkIf (maybeNull != null) { inherit source; });
+              simpleFile = n: v: nullableFile n v v;
+            in
+            builtins.listToAttrs [
+              (simpleFile "highlight.svg" attrs.highlightImage)
+              (simpleFile "panel.svg" attrs.panelImage)
+              (nullableFile "theme.conf" attrs.theme (
+                if builtins.isPath attrs.theme || lib.isStorePath attrs.theme then
+                  attrs.theme
+                else if builtins.isString attrs.theme then
+                  pkgs.writeText "fcitx5-theme.conf" attrs.theme
+                else
+                  iniFormat.generate "fcitx5-${name}-theme" attrs.theme
+              ))
+            ]
+        )
+        cfg.themes;
     };
 
     systemd.user.services.fcitx5-daemon = {
